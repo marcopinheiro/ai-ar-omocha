@@ -1,7 +1,7 @@
 <resources>
-    <string name="app_name">Omocha</string>
+    <string name="app_name">DLAI</string>
 
-    <string name="title_activity_main">Omocha</string>
+    <string name="title_activity_main">Data Leap &amp; AI</string>
     <string name="title_activity_sceneform">AR</string>
     <string name="title_activity_ml">ML</string>
     <string name="title_activity_segmentation">Segmentation</string>

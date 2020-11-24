@@ -35,7 +35,7 @@
                     android:layout_height="match_parent"
                     android:layout_weight="3"/>
 
-                <com.shibuiwilliam.firebase_tflite_arcore.common.SegmentationView
+                <pt.edp.dlai.demo.common.SegmentationView
                     android:id="@+id/segmentation_view"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
