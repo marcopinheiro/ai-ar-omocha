@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_fullscreen"
+        android:icon="@drawable/ic_baseline_fullscreen_24"
+        android:title="Fullscreen"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/menu_object_detection"
+        android:icon="@drawable/ic_baseline_center_focus_strong_24"
+        android:title="Object Detection"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/menu_draw_rectangle"
+        android:icon="@drawable/ic_baseline_photo_size_select_large_24"
+        android:title="Draw Rectangle"
+        app:showAsAction="ifRoom" />
+</menu>

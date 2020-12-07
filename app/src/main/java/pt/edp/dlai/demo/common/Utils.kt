@@ -49,15 +49,16 @@ object Utils {
                     msg: String,
                     logLevel: String = "i",
                     length: Int = Toast.LENGTH_SHORT,
-                    gravity: Int = Gravity.TOP){
+                    gravity: Int = Gravity.TOP,
+                    tr: Throwable? = null){
         makeToast(context, msg, length, gravity)
         when (logLevel){
-            "i" -> Log.i(tag, msg)
-            "d" -> Log.d(tag, msg)
-            "e" -> Log.e(tag, msg)
-            "w" -> Log.w(tag, msg)
-            "v" -> Log.v(tag, msg)
-            else -> Log.i(tag, msg)
+            "i" -> Log.i(tag, msg, tr)
+            "d" -> Log.d(tag, msg, tr)
+            "e" -> Log.e(tag, msg, tr)
+            "w" -> Log.w(tag, msg, tr)
+            "v" -> Log.v(tag, msg, tr)
+            else -> Log.i(tag, msg, tr)
         }
     }
 

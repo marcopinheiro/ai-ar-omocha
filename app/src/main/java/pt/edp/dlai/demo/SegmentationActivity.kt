@@ -22,6 +22,11 @@ import androidx.core.content.ContextCompat
 import android.view.View
 import pt.edp.dlai.demo.common.*
 import android.widget.*
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import kotlinx.android.synthetic.main.activity_segmentation.*
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class SegmentationActivity : AppCompatActivity() {
     private val TAG = "SegmentationActivity"
@@ -33,7 +38,7 @@ class SegmentationActivity : AppCompatActivity() {
 
     private var globals: Globals? = null
 
-    private lateinit var cameraTextureView: TextureView
+    private lateinit var cameraPreviewView: PreviewView
     private lateinit var segmentationView: SegmentationView
 
     private lateinit var alphaSpinner: Spinner
@@ -46,7 +51,8 @@ class SegmentationActivity : AppCompatActivity() {
 
     private var facingCameraX = Constants.FACING_CAMERAX
 
-    private var analyzerThread = HandlerThread("AnalysisThread")
+    //private var analyzerThread = HandlerThread("AnalysisThread")
+    private lateinit var cameraExecutor: ExecutorService
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,7 +67,7 @@ class SegmentationActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_segmentation)
         initializeGlobals()
-        cameraTextureView = findViewById(R.id.cameraTextureView)
+        cameraPreviewView = findViewById(R.id.cameraPreviewView)
 
         segmentationView = findViewById(R.id.segmentation_view)
         segmentationView.makeVisible()
@@ -69,10 +75,11 @@ class SegmentationActivity : AppCompatActivity() {
 
         configureSpinner()
 
-        cameraTextureView.post { startCameraX() }
-        cameraTextureView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+        cameraPreviewView.post { startCameraX() }
+        cameraPreviewView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             updateTransform()
         }
+        cameraExecutor = Executors.newSingleThreadExecutor()
     }
 
     private fun initializeGlobals(){
@@ -83,40 +90,60 @@ class SegmentationActivity : AppCompatActivity() {
     }
 
     private fun startCameraX() {
-        CameraX.unbindAll()
-        val screenSize = Size(cameraTextureView.width, cameraTextureView.height)
+        val screenSize = Size(cameraPreviewView.width, cameraPreviewView.height)
         val screenAspectRatio = Rational(1, 1)
         Log.i(TAG, "Screen size: (${screenSize.width}, ${screenSize.height}).")
 
-        val previewConfig = buildPreviewConfig(screenSize,
-            screenAspectRatio)
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+        cameraProviderFuture.addListener(Runnable {
+            // Used to bind the lifecycle of cameras to the lifecycle owner
+            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
 
-        val preview = Preview(previewConfig)
-        preview.setOnPreviewOutputUpdateListener {
-            val parent = cameraTextureView.parent as ViewGroup
-            parent.removeView(cameraTextureView)
-            cameraTextureView.surfaceTexture = it.surfaceTexture
-            parent.addView(cameraTextureView, 0)
-            updateTransform()
-        }
+            // Preview
+            val preview = Preview.Builder()
+                .setTargetResolution(screenSize)
+                .setTargetRotation(windowManager.defaultDisplay.rotation)
+                .setTargetRotation(cameraPreviewView.display.rotation)
+                .build()
+                .also {
+                    it.setSurfaceProvider(cameraPreviewView.surfaceProvider)
+                }
 
-        val analyzerConfig = buildAnalyzerConfig()
+            // Select back camera as a default
+            var cameraSelector : CameraSelector = CameraSelector.Builder()
+                .requireLensFacing(facingCameraX)
+                .build()
 
-        val imageAnalysis = ImageAnalysis(analyzerConfig)
-        imageAnalysis.analyzer = ImageAnalysis.Analyzer {
-                image: ImageProxy, rotationDegrees: Int ->
-            segmentAwait(image)
-        }
+            val imageAnalysis = ImageAnalysis.Builder()
+                //.setTargetResolution(Size(1280, 720))
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+                .also { it.setAnalyzer(cameraExecutor, ImageAnalysis.Analyzer { image ->
+                    val rotationDegrees = image.imageInfo.rotationDegrees
+                    segmentAwait(image)
+                    image.close()
+                })}
 
-        CameraX.bindToLifecycle(this, preview, imageAnalysis)
+            try {
+                // Unbind use cases before rebinding
+                cameraProvider.unbindAll()
+
+                // Bind use cases to camera
+                cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalysis, preview)
+
+            } catch(exc: Exception) {
+                Log.e(TAG, "Use case binding failed", exc)
+            }
+
+        }, ContextCompat.getMainExecutor(this))
     }
 
     private fun updateTransform() {
         val matrix = Matrix()
-        val centerX = cameraTextureView.width / 2f
-        val centerY = cameraTextureView.height / 2f
+        val centerX = cameraPreviewView.width / 2f
+        val centerY = cameraPreviewView.height / 2f
 
-        val rotationDegrees = when (cameraTextureView.display.rotation) {
+        val rotationDegrees = when (cameraPreviewView.display.rotation) {
             Surface.ROTATION_0 -> 0
             Surface.ROTATION_90 -> 90
             Surface.ROTATION_180 -> 180
@@ -124,7 +151,7 @@ class SegmentationActivity : AppCompatActivity() {
             else -> return
         }
         matrix.postRotate(-rotationDegrees.toFloat(), centerX, centerY)
-        cameraTextureView.setTransform(matrix)
+        //TODO cameraPreviewView.setTransform(matrix)
     }
 
 
@@ -200,29 +227,6 @@ class SegmentationActivity : AppCompatActivity() {
                 porterDuff = Constants.IMAGE_SEGMENTATION_PORTERDUFF
             }
         }
-    }
-
-
-
-    private fun buildPreviewConfig(screenSize: Size,
-                                   screenAspectRatio: Rational): PreviewConfig {
-        return PreviewConfig
-            .Builder()
-            .apply {
-                setLensFacing(facingCameraX)
-                setTargetResolution(screenSize)
-                setTargetAspectRatio(screenAspectRatio)
-                setTargetRotation(windowManager.defaultDisplay.rotation)
-                setTargetRotation(cameraTextureView.display.rotation)
-            }.build()
-    }
-
-    private fun buildAnalyzerConfig(): ImageAnalysisConfig {
-        return ImageAnalysisConfig.Builder().apply {
-            analyzerThread.start()
-            setCallbackHandler(Handler(analyzerThread.looper))
-            setImageReaderMode(ImageAnalysis.ImageReaderMode.ACQUIRE_LATEST_IMAGE)
-        }.build()
     }
 
     fun segmentAwait(image: ImageProxy){
@@ -305,12 +309,13 @@ class SegmentationActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        analyzerThread.interrupt()
+        //analyzerThread.interrupt()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        analyzerThread.quitSafely()
+        //analyzerThread.quitSafely()
+        cameraExecutor.shutdown()
     }
 
 }

@@ -4,6 +4,7 @@ import android.graphics.ImageFormat
 import android.hardware.camera2.CameraCharacteristics
 import android.util.SparseIntArray
 import android.view.Surface
+import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraX
 import com.google.ar.core.Config
 import com.google.firebase.ml.vision.objects.FirebaseVisionObject
@@ -32,8 +33,8 @@ object Constants {
      */
     const val BACK_CAMERA2 = CameraCharacteristics.LENS_FACING_BACK
     const val FRONT_CAMERA2 = CameraCharacteristics.LENS_FACING_FRONT
-    val BACK_CAMERAX = CameraX.LensFacing.BACK
-    val FRONT_CAMERAX = CameraX.LensFacing.FRONT
+    val BACK_CAMERAX = CameraSelector.LENS_FACING_BACK
+    val FRONT_CAMERAX = CameraSelector.LENS_FACING_FRONT
     val FACING_CAMERAX = BACK_CAMERAX
 
     val ORIENTATIONS = SparseIntArray()

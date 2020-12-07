@@ -29,8 +29,8 @@
                 android:layout_height="match_parent"
                 android:orientation="vertical">
 
-                <TextureView
-                    android:id="@+id/cameraTextureView"
+                <androidx.camera.view.PreviewView
+                    android:id="@+id/cameraPreviewView"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:layout_weight="3"/>

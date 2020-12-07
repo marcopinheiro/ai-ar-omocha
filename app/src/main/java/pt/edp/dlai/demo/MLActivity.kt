@@ -2,21 +2,33 @@ package pt.edp.dlai.demo
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.graphics.*
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.Matrix
 import android.os.Bundle
-import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import android.util.Rational
 import android.util.Size
 import android.view.*
-import android.widget.*
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.Spinner
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.*
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.google.common.util.concurrent.ListenableFuture
 import pt.edp.dlai.demo.common.*
 import pt.edp.dlai.demo.ml.MLProcessor
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class MLActivity : AppCompatActivity() {
     private val TAG = "MLActivity"
@@ -28,7 +40,8 @@ class MLActivity : AppCompatActivity() {
 
     private var globals: Globals? = null
 
-    private lateinit var cameraTextureView: TextureView
+    private lateinit var cameraProviderFuture : ListenableFuture<ProcessCameraProvider>
+    private lateinit var cameraPreviewView: PreviewView
     private lateinit var overlay: GraphicOverlay
 
     private var facingCameraX = Constants.FACING_CAMERAX
@@ -37,7 +50,7 @@ class MLActivity : AppCompatActivity() {
 
     private lateinit var mlTargetSpinner: Spinner
     private lateinit var mlClassifierSpinner: Spinner
-    private var mlClassifier = "Quant ImageNet"
+    private lateinit var mlClassifier: String
     private var mlTarget = "Full Screen"
 
     private lateinit var drawView: DrawView
@@ -47,6 +60,7 @@ class MLActivity : AppCompatActivity() {
     private lateinit var mlProcessor: MLProcessor
 
     private var mlThread = HandlerThread("MLThread")
+    private lateinit var cameraExecutor: ExecutorService
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,22 +73,28 @@ class MLActivity : AppCompatActivity() {
                 )
                 return
             }
+            mlClassifier = intent.getStringExtra("algorithm")!!
+            updateActiveModelName()
+
             setContentView(R.layout.activity_ml)
             initializeGlobals()
             objectDetectAwaitSecond = globals!!.objectDetector!!.awaitMilliSecond
             mlProcessor = MLProcessor(globals!!)
 
-            cameraTextureView = findViewById(R.id.cameraTextureView)
+            cameraPreviewView = findViewById<PreviewView>(R.id.cameraPreviewView)
             overlay = findViewById(R.id.overlay)
             drawView = findViewById(R.id.camera_drawview)
             drawView.isFocusable = false
 
-            configureSpinner()
+            //configureSpinner()
 
-            cameraTextureView.post { startCameraX() }
-            cameraTextureView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            cameraExecutor = Executors.newSingleThreadExecutor()
+            cameraPreviewView.post { startCameraX() }
+            cameraPreviewView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 updateTransform()
             }
+            setSupportActionBar(findViewById(R.id.my_toolbar))
+            supportActionBar?.setDisplayHomeAsUpEnabled(true)
         }
         catch (ex: Exception){
             Utils.logAndToast(this,
@@ -82,7 +102,8 @@ class MLActivity : AppCompatActivity() {
                 "Failed to start CameraX",
                 "e",
                 Toast.LENGTH_SHORT,
-                Gravity.TOP)
+                Gravity.TOP,
+                ex)
         }
     }
 
@@ -91,6 +112,36 @@ class MLActivity : AppCompatActivity() {
             globals = application as Globals
             globals!!.initialize(this)
         }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        // Inflate the menu; this adds items to the action bar if it is present.
+        menuInflater.inflate(R.menu.vision, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.menu_fullscreen -> {
+                mlTarget = Constants.MLTARGET_FULL_SCREEN
+                drawView.makeInvisible()
+            }
+            R.id.menu_object_detection -> {
+                mlTarget = Constants.MLTARGET_OBJECT_DETECTION
+                drawView.makeInvisible()
+            }
+            R.id.menu_draw_rectangle -> {
+                mlTarget = Constants.MLTARGET_Rectangle
+                drawView.makeVisible()
+            }
+            else -> {
+                super.onOptionsItemSelected(item)
+                return false
+            }
+        }
+        Log.i(TAG, "Selected mlTarget ${mlTarget}")
+        cameraPreviewView.post { startCameraX() }
+        return true
     }
 
     private fun updateActiveModelName(){
@@ -102,7 +153,7 @@ class MLActivity : AppCompatActivity() {
         }
     }
 
-    private fun configureSpinner(){
+    /*private fun configureSpinner(){
         mlTargetSpinner = findViewById(R.id.mlTarget)
         val mlTargetAdapter = ArrayAdapter(
             applicationContext,
@@ -128,14 +179,14 @@ class MLActivity : AppCompatActivity() {
                     }
                 }
                 Log.i(TAG, "Selected mlTarget ${mlTarget}")
-                cameraTextureView.post { startCameraX() }
+                cameraPreviewView.post { startCameraX() }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {
                 mlTarget = Constants.MLTARGET_FULL_SCREEN
             }
         }
 
-        mlClassifierSpinner = findViewById(R.id.mlClassifier)
+        /*mlClassifierSpinner = findViewById(R.id.mlClassifier)
         val mlClassifierAdapter = ArrayAdapter(
             applicationContext,
             android.R.layout.simple_spinner_item,
@@ -153,17 +204,17 @@ class MLActivity : AppCompatActivity() {
                 mlClassifier = spinnerParent.selectedItem as String
                 updateActiveModelName()
                 Log.i(TAG, "Selected mlClassifier ${mlClassifier}")
-                cameraTextureView.post { startCameraX() }
+                cameraPreviewView.post { startCameraX() }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {
                 mlClassifier = Constants.MLCLASSIFIER_QUANT_IMAGENET
             }
-        }
+        }*/
         updateActiveModelName()
-    }
+    }*/
 
 
-    private fun startCameraX() {
+    /*private fun startCameraXX() {
         CameraX.unbindAll()
         val screenSize = Size(cameraTextureView.width, cameraTextureView.height)
         val screenAspectRatio = Rational(1, 1)
@@ -176,7 +227,7 @@ class MLActivity : AppCompatActivity() {
         preview.setOnPreviewOutputUpdateListener {
             val parent = cameraTextureView.parent as ViewGroup
             parent.removeView(cameraTextureView)
-            cameraTextureView.surfaceTexture = it.surfaceTexture
+            cameraTextureView.setSurfaceTexture(it.surfaceTexture)
             parent.addView(cameraTextureView, 0)
             updateTransform()
         }
@@ -184,21 +235,70 @@ class MLActivity : AppCompatActivity() {
         val analyzerConfig = buildAnalyzerConfig()
 
         val imageAnalysis = ImageAnalysis(analyzerConfig)
-        imageAnalysis.analyzer = ImageAnalysis.Analyzer {
+        imageAnalysis.setAnalyzer(cameraExecutor, ImageAnalysis.Analyzer {
                 image: ImageProxy, rotationDegrees: Int ->
             mlImageAnalysis(image, rotationDegrees)
-        }
+        })
 
         CameraX.bindToLifecycle(this, preview, imageAnalysis)
+    }*/
+
+    private fun startCameraX() {
+        val screenSize = Size(cameraPreviewView.width, cameraPreviewView.height)
+        val screenAspectRatio = Rational(1, 1)
+        Log.i(TAG, "Screen size: (${screenSize.width}, ${screenSize.height}).")
+
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+        cameraProviderFuture.addListener(Runnable {
+            // Used to bind the lifecycle of cameras to the lifecycle owner
+            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+
+            // Preview
+            val preview = Preview.Builder()
+                .setTargetResolution(screenSize)
+                .setTargetRotation(windowManager.defaultDisplay.rotation)
+                .setTargetRotation(cameraPreviewView.display.rotation)
+                .build()
+                .also {
+                    it.setSurfaceProvider(cameraPreviewView.surfaceProvider)
+                }
+
+            // Select back camera as a default
+            var cameraSelector : CameraSelector = CameraSelector.Builder()
+                .requireLensFacing(facingCameraX)
+                .build()
+
+            val imageAnalysis = ImageAnalysis.Builder()
+                //.setTargetResolution(Size(1280, 720))
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+                .also { it.setAnalyzer(cameraExecutor, ImageAnalysis.Analyzer { image ->
+                    val rotationDegrees = image.imageInfo.rotationDegrees
+                    mlImageAnalysis(image, rotationDegrees)
+                    image.close()
+                })}
+
+            try {
+                // Unbind use cases before rebinding
+                cameraProvider.unbindAll()
+
+                // Bind use cases to camera
+                cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalysis, preview)
+
+            } catch(exc: Exception) {
+                Log.e(TAG, "Use case binding failed", exc)
+            }
+
+        }, ContextCompat.getMainExecutor(this))
     }
 
 
     private fun updateTransform() {
         val matrix = Matrix()
-        val centerX = cameraTextureView.width / 2f
-        val centerY = cameraTextureView.height / 2f
+        val centerX = cameraPreviewView.width / 2f
+        val centerY = cameraPreviewView.height / 2f
 
-        val rotationDegrees = when (cameraTextureView.display.rotation) {
+        val rotationDegrees = when (cameraPreviewView.display.rotation) {
             Surface.ROTATION_0 -> 0
             Surface.ROTATION_90 -> 90
             Surface.ROTATION_180 -> 180
@@ -206,30 +306,7 @@ class MLActivity : AppCompatActivity() {
             else -> return
         }
         matrix.postRotate(-rotationDegrees.toFloat(), centerX, centerY)
-        cameraTextureView.setTransform(matrix)
-    }
-
-    private fun buildPreviewConfig(screenSize: Size,
-                                   screenAspectRatio: Rational): PreviewConfig {
-        return PreviewConfig
-            .Builder()
-            .apply {
-                setLensFacing(facingCameraX)
-                setTargetResolution(screenSize)
-                setTargetAspectRatio(screenAspectRatio)
-                setTargetRotation(windowManager.defaultDisplay.rotation)
-                setTargetRotation(cameraTextureView.display.rotation)
-            }.build()
-    }
-
-    private fun buildAnalyzerConfig(): ImageAnalysisConfig {
-        return ImageAnalysisConfig.Builder().apply {
-            mlThread = HandlerThread("MLThread").apply {
-                start()
-            }
-            setCallbackHandler(Handler(mlThread.looper))
-            setImageReaderMode(ImageAnalysis.ImageReaderMode.ACQUIRE_LATEST_IMAGE)
-        }.build()
+        //TODO cameraPreviewView.setTransform(matrix)
     }
 
     private fun mlImageAnalysis(image: ImageProxy, rotationDegrees: Int) {
@@ -350,12 +427,13 @@ class MLActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        mlThread.interrupt()
+        //mlThread.interrupt()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        mlThread.quitSafely()
+        //mlThread.quitSafely()
+        cameraExecutor.shutdown()
     }
 
 }
